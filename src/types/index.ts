@@ -32,26 +32,17 @@ export interface MigrationInfo {
   metadata?: MigrationMetadata;
 }
 
+export interface Warning {
+  code: string;
+  message: string;
+}
+
 export interface Issue {
   title: string;
   severity: Severity;
-  status: 'verified' | 'unverified';
-  evidence: {
-    provenance: Provenance;
-    message: string;
-  };
+  evidence: string[];
   impact: string;
   action: string;
-}
-
-export interface VerifiedCheck {
-  message: string;
-  provenance: Provenance;
-}
-
-export interface UnverifiedCheck {
-  message: string;
-  provenance: Provenance;
 }
 
 export interface Diagnostics {
@@ -64,20 +55,23 @@ export interface Diagnostics {
 }
 
 export interface Assessment {
-  id: string;
+  review_id: string;
+  status: string;
   decision: Decision;
   risk_level: RiskLevel;
-  analysis_scope: AnalysisScope;
   summary: string;
-  migration: MigrationInfo;
   issues: Issue[];
-  verified_checks: VerifiedCheck[];
-  unverified_checks: UnverifiedCheck[];
+  verified_checks: string[];
   next_steps: string[];
+  warnings: Warning[];
+  error: string | null;
+  migration?: MigrationInfo;
+  analysis_scope?: AnalysisScope;
+  unverified_checks?: string[];
   missing_context?: string[];
-  diagnostics: Diagnostics;
-  timestamp: string;
-  duration_seconds: number;
+  diagnostics?: Diagnostics;
+  timestamp?: string;
+  duration_seconds?: number;
 }
 
 export interface ReviewHistoryItem {

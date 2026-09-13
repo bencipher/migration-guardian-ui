@@ -139,7 +139,7 @@ export default function NewReviewPage() {
 
     const assessment = await analyzeMigration(uploadResult.filename, resolvedType);
     setAnalysisState('done');
-    navigate(`/app/reviews/${assessment.id}`, { state: { assessment } });
+    navigate(`/app/reviews/${assessment.review_id}`, { state: { assessment } });
   };
 
   const stages = resolvedType === 'sql' ? sqlStages : staticStages;

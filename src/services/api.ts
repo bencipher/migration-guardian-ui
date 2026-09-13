@@ -66,10 +66,10 @@ export async function detectMigrationType(
     } else if (content.includes('from alembic') || content.includes('revision =') || content.includes('down_revision')) {
       detectedType = 'alembic';
     } else {
-      detectedType = explicitType === 'auto' ? 'django' : explicitType as MigrationType;
+      detectedType = explicitType === 'auto' ? 'django' : (explicitType as MigrationType);
     }
   } else {
-    detectedType = explicitType === 'auto' ? 'sql' : explicitType as MigrationType;
+    detectedType = explicitType === 'auto' ? 'sql' : (explicitType as MigrationType);
   }
 
   const result: FileUploadResult = {
@@ -96,61 +96,49 @@ export async function detectMigrationType(
 }
 
 const sqlAssessment: Assessment = {
-  id: 'rev_001',
+  review_id: 'rev_001',
+  status: 'completed',
   decision: 'block',
   risk_level: 'high',
-  analysis_scope: 'full',
   summary:
     'The migration will fail against the current source data because existing rows violate the proposed constraints.',
-  migration: {
-    source_type: 'sql',
-    detected_type: 'sql',
-    filename: '20260909_enforce_shipment_constraints.sql',
-    file_size: 1420,
-  },
   issues: [
     {
       title: 'Existing rows violate NOT NULL constraint',
       severity: 'high',
-      status: 'verified',
-      evidence: {
-        provenance: 'source_database',
-        message: '317 rows have dispatched_at IS NULL.',
-      },
+      evidence: [
+        'The migration adds a SET NOT NULL on the dispatched_at column.',
+        'A source inspection found 317 rows where dispatched_at IS NULL.',
+      ],
       impact: 'SET NOT NULL will fail before the migration completes.',
       action: 'Backfill or remove NULL values before deploying.',
     },
     {
       title: 'Existing rows violate weight constraint',
       severity: 'high',
-      status: 'verified',
-      evidence: {
-        provenance: 'source_database',
-        message: '14 rows have weight_grams <= 0.',
-      },
+      evidence: [
+        'The migration adds a CHECK constraint requiring weight_grams > 0.',
+        'A source inspection found 14 rows where weight_grams <= 0.',
+      ],
       impact: 'The CHECK constraint cannot be validated against the current data.',
       action: 'Correct invalid weight values before deployment.',
     },
     {
       title: 'Potential blocking table validation',
       severity: 'medium',
-      status: 'unverified',
-      evidence: {
-        provenance: 'static',
-        message: 'The migration applies multiple constraints to the shipments table.',
-      },
+      evidence: [
+        'The migration applies multiple constraints to the shipments table.',
+        'Production table size and write volume are unknown.',
+      ],
       impact: 'Constraint validation may affect production traffic.',
       action: 'Plan deployment during lower traffic or use an online-safe validation strategy.',
     },
   ],
   verified_checks: [
-    { message: '317 NULL dispatched_at rows found', provenance: 'source_database' },
-    { message: '14 non-positive weight rows found', provenance: 'source_database' },
-    { message: 'Candidate failed in sandbox with SQLSTATE 23502', provenance: 'sandbox' },
-    { message: 'Source inspection ran read-only', provenance: 'source_database' },
-  ],
-  unverified_checks: [
-    { message: 'Lock duration under production traffic', provenance: 'unverified' },
+    '317 NULL dispatched_at rows found in source database',
+    '14 non-positive weight rows found in source database',
+    'Candidate failed in sandbox with SQLSTATE 23502',
+    'Source inspection ran read-only',
   ],
   next_steps: [
     'Backfill dispatched_at for existing NULL rows.',
@@ -158,6 +146,15 @@ const sqlAssessment: Assessment = {
     'Re-run Migration Guardian before deployment.',
     'Schedule deployment during a low-traffic window.',
   ],
+  warnings: [],
+  error: null,
+  migration: {
+    source_type: 'sql',
+    detected_type: 'sql',
+    filename: '20260909_enforce_shipment_constraints.sql',
+    file_size: 1420,
+  },
+  analysis_scope: 'full',
   diagnostics: {
     framework: 'strands',
     provider: 'openai',
@@ -170,13 +167,125 @@ const sqlAssessment: Assessment = {
   duration_seconds: 8.4,
 };
 
+const approveWithConditionsAssessment: Assessment = {
+  review_id: 'rev_004',
+  status: 'completed',
+  decision: 'approve_with_conditions',
+  risk_level: 'medium',
+  summary:
+    'The migration executed successfully in the sandbox, but deployment should proceed only after confirming the tag rollout and backfill behavior, validating the new uniqueness rule, and planning for production locking.',
+  issues: [
+    {
+      title: '`mainsite_events.tag` becomes required with no database default',
+      severity: 'medium',
+      evidence: [
+        'The migration adds `tag` as `text DEFAULT \'event\' NOT NULL` and then removes the database default.',
+        'The migration executed successfully in the sandbox, so existing sandbox rows were accepted and populated.',
+      ],
+      impact:
+        'After the default is removed, inserts that do not supply a non-NULL `tag` will fail. Compatibility with all application versions, jobs, and fixtures has not been established.',
+      action:
+        'Ensure every writer supplies a non-NULL `tag` before deployment. For a rolling deployment, retain the default temporarily and remove it in a later migration.',
+    },
+    {
+      title: 'Existing `mainsite_events.tag` values will be backfilled as `event`',
+      severity: 'medium',
+      evidence: [
+        'The migration uses the fixed value `event` when adding `mainsite_events.tag`.',
+        'The source table has an estimated 3 rows.',
+      ],
+      impact:
+        'All existing rows will receive the same value, which may not accurately represent their historical meaning.',
+      action: 'Confirm `event` is correct for every existing row; if row-specific history matters, use a data-derived backfill.',
+    },
+    {
+      title: '`max_volunteer_needed` will become globally unique',
+      severity: 'medium',
+      evidence: [
+        'The migration adds a UNIQUE constraint to the nullable integer column `mainsite_events.max_volunteer_needed`.',
+        'The source check returned no conflicting non-NULL values, and the constraint was created successfully in the sandbox.',
+      ],
+      impact:
+        'Future events cannot share the same non-NULL volunteer limit, while multiple NULL values remain allowed. This may impose unintended business behavior.',
+      action:
+        'Confirm global uniqueness is intended. Otherwise remove the constraint. Recheck live data for duplicate non-NULL values immediately before deployment and account for concurrent writes.',
+    },
+    {
+      title: 'Migration DDL may block writes',
+      severity: 'medium',
+      evidence: [
+        'The migration performs three `ALTER TABLE` statements and creates a regular UNIQUE constraint.',
+        'Sandbox execution completed successfully in about 0.59 seconds.',
+      ],
+      impact:
+        'Production lock duration cannot be inferred from the sandbox because production table size, write volume, PostgreSQL version, and lock conditions are unknown.',
+      action:
+        'Deploy in a controlled window with bounded lock and statement timeouts, monitor lock acquisition, and prepare a retry or rollback plan. For a large or busy table, consider a staged approach with a concurrently built unique index where supported.',
+    },
+  ],
+  verified_checks: [],
+  next_steps: [
+    'Confirm all writers provide `tag`, or retain its default during the rollout compatibility window.',
+    'Validate that `event` is the correct backfill for all existing rows.',
+    'Confirm the uniqueness requirement and run a live duplicate check immediately before deployment.',
+    'Assess production table size and traffic, then deploy with lock monitoring, timeouts, and a rollback plan.',
+    'Verify the resulting schema after deployment.',
+  ],
+  warnings: [
+    {
+      code: 'privileged_source_role',
+      message:
+        'This database role has elevated privileges. Migration Guardian will use the source connection in read-only mode. A dedicated read-only role is recommended for production use.',
+    },
+  ],
+  error: null,
+  migration: {
+    source_type: 'sql',
+    detected_type: 'sql',
+    filename: '0012_add_tag_and_unique_constraint.sql',
+    file_size: 890,
+  },
+  analysis_scope: 'full',
+  diagnostics: {
+    framework: 'strands',
+    provider: 'openai',
+    model: 'gpt-5.6-sol',
+    duration_seconds: 8.2,
+    tool_calls: 5,
+  },
+  timestamp: new Date().toISOString(),
+  duration_seconds: 8.2,
+};
+
 const djangoAssessment: Assessment = {
-  id: 'rev_002',
+  review_id: 'rev_002',
+  status: 'completed',
   decision: 'review_required',
   risk_level: 'medium',
-  analysis_scope: 'static_only',
   summary:
     'The Django migration contains custom Python behavior that cannot be safely executed from an uploaded artifact.',
+  issues: [
+    {
+      title: 'Custom RunPython operation requires trusted project context',
+      severity: 'medium',
+      evidence: [
+        'RunPython(backfill_shipments) was detected in the migration file.',
+        'The uploaded Python code was statically parsed but not executed.',
+      ],
+      impact: 'Its runtime behavior cannot be fully verified from an untrusted uploaded artifact.',
+      action: 'Run Migration Guardian locally inside the trusted Django project.',
+    },
+  ],
+  verified_checks: [
+    'Django migration structure parsed successfully',
+    'Uploaded Python was not executed',
+  ],
+  next_steps: [
+    'Run Migration Guardian locally from the trusted Django project.',
+    'Repeat the review after full project-aware migration resolution.',
+  ],
+  warnings: [],
+  error: null,
   migration: {
     source_type: 'django',
     detected_type: 'django',
@@ -188,37 +297,17 @@ const djangoAssessment: Assessment = {
       operations: ['RunPython', 'AlterField', 'AddConstraint'],
     },
   },
-  issues: [
-    {
-      title: 'Custom RunPython operation requires trusted project context',
-      severity: 'medium',
-      status: 'unverified',
-      evidence: {
-        provenance: 'static',
-        message: 'RunPython(backfill_shipments) was detected.',
-      },
-      impact: 'Its runtime behavior cannot be fully verified from an untrusted uploaded artifact.',
-      action: 'Run Migration Guardian locally inside the trusted Django project.',
-    },
-  ],
-  verified_checks: [
-    { message: 'Django migration structure parsed successfully', provenance: 'static' },
-    { message: 'Uploaded Python was not executed', provenance: 'static' },
-  ],
+  analysis_scope: 'static_only',
   unverified_checks: [
-    { message: 'Runtime behavior of backfill_shipments', provenance: 'unverified' },
-    { message: 'Complete Django migration graph', provenance: 'unverified' },
-    { message: 'Application behavior during deployment', provenance: 'unverified' },
+    'Runtime behavior of backfill_shipments',
+    'Complete Django migration graph',
+    'Application behavior during deployment',
   ],
   missing_context: [
     'Django project',
     'installed apps',
     'migration graph',
     'project runtime',
-  ],
-  next_steps: [
-    'Run Migration Guardian locally from the trusted Django project.',
-    'Repeat the review after full project-aware migration resolution.',
   ],
   diagnostics: {
     framework: 'strands',
@@ -238,10 +327,10 @@ export async function analyzeMigration(
   await delay(9000);
 
   if (detectedType === 'django' || detectedType === 'alembic') {
-    return { ...djangoAssessment, id: `rev_${Date.now()}`, timestamp: new Date().toISOString() };
+    return { ...djangoAssessment, review_id: `rev_${Date.now()}`, timestamp: new Date().toISOString() };
   }
 
-  return { ...sqlAssessment, id: `rev_${Date.now()}`, timestamp: new Date().toISOString() };
+  return { ...approveWithConditionsAssessment, review_id: `rev_${Date.now()}`, timestamp: new Date().toISOString() };
 }
 
 const mockReviews: ReviewHistoryItem[] = [
@@ -277,13 +366,13 @@ const mockReviews: ReviewHistoryItem[] = [
   },
   {
     id: 'rev_004',
-    migration_name: '20260828_drop_legacy_table.sql',
+    migration_name: '0012_add_tag_and_unique_constraint.sql',
     type: 'sql',
     decision: 'approve_with_conditions',
     risk_level: 'medium',
     database_name: 'app_staging',
     timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    duration_seconds: 6.7,
+    duration_seconds: 8.2,
   },
   {
     id: 'rev_005',
@@ -307,9 +396,12 @@ export async function getReview(id: string): Promise<Assessment | null> {
   const review = mockReviews.find((r) => r.id === id);
   if (!review) return null;
   if (review.type === 'django' || review.type === 'alembic') {
-    return { ...djangoAssessment, id: review.id, timestamp: review.timestamp };
+    return { ...djangoAssessment, review_id: review.id, timestamp: review.timestamp };
   }
-  return { ...sqlAssessment, id: review.id, timestamp: review.timestamp };
+  if (review.decision === 'approve_with_conditions') {
+    return { ...approveWithConditionsAssessment, review_id: review.id, timestamp: review.timestamp };
+  }
+  return { ...sqlAssessment, review_id: review.id, timestamp: review.timestamp };
 }
 
 const MOCK_USER: User = {
