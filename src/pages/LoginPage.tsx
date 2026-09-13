@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { User as UserIcon, Lock, ArrowRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { Input, Field } from '@/components/ui/Form';
 import Logo from '@/components/ui/Logo';
@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { signIn, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -20,7 +20,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     try {
-      await signIn(email, password);
+      await signIn(username, password);
       navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed.');
@@ -40,15 +40,15 @@ export default function LoginPage() {
             <p className="mt-1.5 text-sm text-ink-500 text-center">Enter your credentials to access Migration Guardian.</p>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              <Field label="Work email" htmlFor="email">
+              <Field label="Username" htmlFor="username">
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="username"
+                    type="text"
+                    placeholder="mig_admin"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     className="pl-10"
                     required
                   />

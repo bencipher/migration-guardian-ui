@@ -405,16 +405,22 @@ export async function getReview(id: string): Promise<Assessment | null> {
 }
 
 const MOCK_USER: User = {
-  email: 'engineer@migrationguardian.io',
-  name: 'Platform Engineer',
+  email: 'mig_admin',
+  name: 'Migration Admin',
 };
 
-export async function signIn(email: string, password: string): Promise<User> {
+const VALID_USERNAME = 'mig_admin';
+const VALID_PASSWORD = 'Guardian';
+
+export async function signIn(username: string, password: string): Promise<User> {
   await delay(900);
-  if (!email || !password) {
-    throw new Error('Email and password are required.');
+  if (!username || !password) {
+    throw new Error('Username and password are required.');
   }
-  return { ...MOCK_USER, email: email || MOCK_USER.email };
+  if (username !== VALID_USERNAME || password !== VALID_PASSWORD) {
+    throw new Error('Invalid username or password.');
+  }
+  return { ...MOCK_USER };
 }
 
 export async function signOut(): Promise<void> {

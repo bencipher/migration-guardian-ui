@@ -5,7 +5,7 @@ import * as api from '@/services/api';
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -24,10 +24,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const [loading, setLoading] = useState(false);
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (username: string, password: string) => {
     setLoading(true);
     try {
-      const u = await api.signIn(email, password);
+      const u = await api.signIn(username, password);
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
     } finally {
