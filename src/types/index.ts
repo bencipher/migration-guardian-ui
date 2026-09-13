@@ -1,5 +1,6 @@
 export type MigrationType = 'sql' | 'django' | 'alembic';
 export type MigrationTypeSelection = MigrationType | 'auto';
+export type ReviewStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 export type Decision = 'block' | 'approve_with_conditions' | 'approve' | 'review_required';
 export type RiskLevel = 'high' | 'medium' | 'low';
@@ -7,13 +8,22 @@ export type Severity = 'high' | 'medium' | 'low';
 export type Provenance = 'source_database' | 'sandbox' | 'static' | 'unverified';
 export type AnalysisScope = 'full' | 'static_only';
 
+export interface ApiErrorDetail {
+  code: string;
+  message: string;
+}
+
+export interface Warning {
+  code: string;
+  message: string;
+}
+
 export interface ConnectionResult {
-  connected: boolean;
-  database?: string;
-  schema?: string;
-  postgres_version?: string;
-  read_only_verified?: boolean;
-  error?: string;
+  status: 'ok';
+  database: 'postgresql';
+  read_only_compatible: boolean;
+  inspected_tables: number;
+  warnings: Warning[];
 }
 
 export interface MigrationMetadata {
@@ -30,11 +40,6 @@ export interface MigrationInfo {
   filename: string;
   file_size?: number;
   metadata?: MigrationMetadata;
-}
-
-export interface Warning {
-  code: string;
-  message: string;
 }
 
 export interface Issue {
@@ -56,15 +61,15 @@ export interface Diagnostics {
 
 export interface Assessment {
   review_id: string;
-  status: string;
-  decision: Decision;
-  risk_level: RiskLevel;
-  summary: string;
+  status: ReviewStatus;
+  decision: Decision | null;
+  risk_level: RiskLevel | null;
+  summary: string | null;
   issues: Issue[];
   verified_checks: string[];
   next_steps: string[];
   warnings: Warning[];
-  error: string | null;
+  error: ApiErrorDetail | null;
   migration?: MigrationInfo;
   analysis_scope?: AnalysisScope;
   unverified_checks?: string[];
@@ -74,15 +79,17 @@ export interface Assessment {
   duration_seconds?: number;
 }
 
-export interface ReviewHistoryItem {
-  id: string;
-  migration_name: string;
-  type: MigrationType;
-  decision: Decision;
-  risk_level: RiskLevel;
-  database_name: string;
-  timestamp: string;
-  duration_seconds: number;
+export type ReviewHistoryItem = Assessment;
+
+export interface ReviewSubmission {
+  review_id: string;
+  status: 'queued';
+}
+
+export interface FileUploadResult {
+  file: File;
+  filename: string;
+  file_size: number;
 }
 
 export interface User {
@@ -98,11 +105,4 @@ export interface WaitlistResult {
 export interface DemoRequestResult {
   success: boolean;
   message: string;
-}
-
-export interface FileUploadResult {
-  filename: string;
-  file_size: number;
-  detected_type: MigrationType;
-  metadata?: MigrationMetadata;
 }

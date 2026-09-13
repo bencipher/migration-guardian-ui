@@ -1,36 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Clock, FileText, ArrowRight } from 'lucide-react';
+import { Plus, FileText, ArrowRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DecisionBadge, RiskBadge } from '@/components/ui/StatusBadges';
 import { getReviews } from '@/services/api';
 import type { ReviewHistoryItem } from '@/types';
-import { useAuth } from '@/auth/AuthContext';
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins} minutes ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hours ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
-  return `${Math.floor(days / 7)} weeks ago`;
-}
 
 export default function WorkspacePage() {
-  const { user } = useAuth();
   const [recentReviews, setRecentReviews] = useState<ReviewHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    getReviews().then((reviews) => {
-      setRecentReviews(reviews.slice(0, 5));
-      setLoading(false);
-    });
+    getReviews()
+      .then((reviews) => setRecentReviews(reviews.slice(0, 5)))
+      .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Unable to load reviews.'))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -100,6 +86,8 @@ export default function WorkspacePage() {
               <div key={i} className="h-16 rounded-xl shimmer-bg" />
             ))}
           </div>
+        ) : loadError ? (
+          <Card className="p-8 text-center"><p className="text-sm text-danger-700">{loadError}</p></Card>
         ) : recentReviews.length === 0 ? (
           <Card className="p-12 text-center">
             <FileText className="w-8 h-8 text-ink-300 mx-auto mb-3" />
@@ -108,18 +96,16 @@ export default function WorkspacePage() {
         ) : (
           <div className="space-y-2">
             {recentReviews.map((review) => (
-              <Link key={review.id} to={`/app/reviews/${review.id}`}>
+              <Link key={review.review_id} to={`/app/reviews/${review.review_id}`}>
                 <Card className="p-4 flex items-center gap-4 hover:shadow-md hover:border-ink-300 transition-all cursor-pointer">
                   <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-ink-100 flex items-center justify-center">
                     <FileText className="w-5 h-5 text-ink-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-ink-900 truncate font-mono">{review.migration_name}</p>
+                    <p className="text-sm font-medium text-ink-900 truncate font-mono">Review {review.review_id}</p>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs text-ink-400 uppercase">{review.type}</span>
-                      <span className="text-xs text-ink-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {relativeTime(review.timestamp)}
-                      </span>
+                      <span className="text-xs text-ink-400 uppercase">{review.status}</span>
+                      {review.summary && <span className="text-xs text-ink-400 truncate">{review.summary}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

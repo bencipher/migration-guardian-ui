@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Clock, Database, Filter, ArrowRight } from 'lucide-react';
+import { FileText, Filter, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { DecisionBadge, RiskBadge } from '@/components/ui/StatusBadges';
@@ -15,29 +15,17 @@ const filterOptions: { label: string; value: Decision | 'all' }[] = [
   { label: 'Review required', value: 'review_required' },
 ];
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days}d ago`;
-  return `${Math.floor(days / 7)}w ago`;
-}
-
 export default function ReviewHistoryPage() {
   const [reviews, setReviews] = useState<ReviewHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Decision | 'all'>('all');
 
   useEffect(() => {
-    getReviews().then((r) => {
-      setReviews(r);
-      setLoading(false);
-    });
+    getReviews()
+      .then(setReviews)
+      .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Unable to load reviews.'))
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = filter === 'all' ? reviews : reviews.filter((r) => r.decision === filter);
@@ -78,6 +66,8 @@ export default function ReviewHistoryPage() {
             <div key={i} className="h-20 rounded-xl shimmer-bg" />
           ))}
         </div>
+      ) : loadError ? (
+        <Card className="p-12 text-center"><p className="text-sm text-danger-700">{loadError}</p></Card>
       ) : filtered.length === 0 ? (
         <Card className="p-12 text-center">
           <FileText className="w-8 h-8 text-ink-300 mx-auto mb-3" />
@@ -86,23 +76,17 @@ export default function ReviewHistoryPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((review) => (
-            <Link key={review.id} to={`/app/reviews/${review.id}`}>
+            <Link key={review.review_id} to={`/app/reviews/${review.review_id}`}>
               <Card className="p-4 hover:shadow-md hover:border-ink-300 transition-all cursor-pointer group">
                 <div className="flex items-center gap-4">
                   <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-ink-100 flex items-center justify-center">
                     <FileText className="w-5 h-5 text-ink-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-ink-900 truncate font-mono">{review.migration_name}</p>
+                    <p className="text-sm font-medium text-ink-900 truncate font-mono">Review {review.review_id}</p>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span className="text-xs text-ink-400 uppercase">{review.type}</span>
-                      <span className="text-xs text-ink-400 flex items-center gap-1">
-                        <Database className="w-3 h-3" /> {review.database_name}
-                      </span>
-                      <span className="text-xs text-ink-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {relativeTime(review.timestamp)}
-                      </span>
-                      <span className="text-xs text-ink-400">{review.duration_seconds}s</span>
+                      <span className="text-xs text-ink-400 uppercase">{review.status}</span>
+                      {review.summary && <span className="text-xs text-ink-400 truncate">{review.summary}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

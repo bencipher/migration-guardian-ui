@@ -7,7 +7,6 @@ import {
   ShieldQuestion,
   CheckCircle2,
   HelpCircle,
-  ChevronDown,
   ChevronRight,
   FileText,
   Lock,
@@ -18,7 +17,7 @@ import {
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { SeverityBadge } from '@/components/ui/StatusBadges';
-import { getReview } from '@/services/api';
+import { getReview, pollReview } from '@/services/api';
 import type { Assessment, Decision } from '@/types';
 
 const decisionConfig: Record<Decision, { icon: typeof ShieldAlert; bg: string; border: string; text: string; label: string; subtext: string }> = {
@@ -71,18 +70,30 @@ export default function AssessmentResultPage() {
   const location = useLocation();
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [jsonOpen, setJsonOpen] = useState(false);
 
   useEffect(() => {
-    if (location.state?.assessment) {
-      setAssessment(location.state.assessment as Assessment);
-      setLoading(false);
-    } else if (id) {
-      getReview(id).then((a) => {
-        setAssessment(a);
-        setLoading(false);
-      });
-    }
+    let active = true;
+    const load = async () => {
+      try {
+        const initial = location.state?.assessment as Assessment | undefined ?? (id ? await getReview(id) : null);
+        if (!initial) return;
+        if (!active) return;
+        setAssessment(initial);
+        if (initial.status === 'queued' || initial.status === 'processing') {
+          await pollReview(initial.review_id, (updated) => {
+            if (active) setAssessment(updated);
+          });
+        }
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Unable to load this review.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
   }, [id, location.state]);
 
   if (loading) {
@@ -101,7 +112,7 @@ export default function AssessmentResultPage() {
     return (
       <div className="container-app py-10 text-center">
         <FileText className="w-8 h-8 text-ink-300 mx-auto mb-3" />
-        <p className="text-sm text-ink-500">Review not found.</p>
+        <p className="text-sm text-ink-500">{loadError || 'Review not found.'}</p>
         <Link to="/app/reviews" className="mt-3 inline-block">
           <Button variant="outline" size="sm">Back to Reviews</Button>
         </Link>
@@ -109,7 +120,7 @@ export default function AssessmentResultPage() {
     );
   }
 
-  const config = decisionConfig[assessment.decision];
+  const config = decisionConfig[assessment.decision ?? 'review_required'];
   const DecisionIcon = config.icon;
   const isStatic = assessment.analysis_scope === 'static_only';
   const hasDiagnostics = !!assessment.diagnostics;
@@ -206,7 +217,7 @@ export default function AssessmentResultPage() {
             <AlertCircle className="w-4 h-4 text-danger-600" />
             <span className="text-sm font-semibold text-danger-800">Analysis error</span>
           </div>
-          <p className="text-sm text-danger-700">{assessment.error}</p>
+          <p className="text-sm text-danger-700">{assessment.error.message}</p>
         </div>
       )}
 
