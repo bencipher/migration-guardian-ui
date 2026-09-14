@@ -1,5 +1,5 @@
 import { useState, useRef, type FormEvent } from 'react';
-import { Mail, CheckCircle2, Loader2 } from 'lucide-react';
+import { Mail, CheckCircle2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { Input, Field } from '@/components/ui/Form';
 import { joinWaitlist } from '@/services/api';
@@ -15,13 +15,19 @@ export default function WaitlistForm({ compact = false }: { compact?: boolean })
     e.preventDefault();
     if (!email) return;
     setStatus('loading');
-    const result = await joinWaitlist(email, firstName || undefined);
-    if (result.success) {
-      setStatus('success');
-      setMessage(result.message);
-    } else {
+    setMessage('');
+    try {
+      const result = await joinWaitlist(email, firstName || undefined);
+      if (result.success) {
+        setStatus('success');
+        setMessage(result.message);
+      } else {
+        setStatus('error');
+        setMessage(result.message);
+      }
+    } catch (error) {
       setStatus('error');
-      setMessage(result.message);
+      setMessage(error instanceof Error ? error.message : 'Unable to save your waitlist request.');
     }
   };
 

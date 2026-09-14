@@ -34,9 +34,9 @@ export default function PublicFooter() {
 
           <div className="md:col-span-1">
             <h4 className="text-sm font-semibold text-ink-900 mb-3">Links</h4>
-            <ul className="space-y-2">
+            <ul className="flex flex-wrap gap-x-4 gap-y-2">
               {footerLinks.map((link) => (
-                <li key={link.to}>
+                <li key={link.to} className="whitespace-nowrap">
                   <Link to={link.to} className="text-sm text-ink-500 hover:text-ink-900 transition-colors">
                     {link.label}
                   </Link>

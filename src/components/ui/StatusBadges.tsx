@@ -41,6 +41,7 @@ export function DecisionBadge({ decision }: { decision: Decision | null }) {
 
 export function RiskBadge({ risk }: { risk: RiskLevel | null }) {
   const config: Record<RiskLevel, { label: string; classes: string }> = {
+    critical: { label: 'CRITICAL', classes: 'bg-danger-200 text-danger-900' },
     high: { label: 'HIGH', classes: 'bg-danger-100 text-danger-800' },
     medium: { label: 'MEDIUM', classes: 'bg-warning-100 text-warning-800' },
     low: { label: 'LOW', classes: 'bg-success-100 text-success-800' },
@@ -61,6 +62,7 @@ export function RiskBadge({ risk }: { risk: RiskLevel | null }) {
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
   const config: Record<Severity, { label: string; classes: string }> = {
+    critical: { label: 'CRITICAL', classes: 'bg-danger-100 text-danger-800 border border-danger-300' },
     high: { label: 'HIGH', classes: 'bg-danger-50 text-danger-700 border border-danger-200' },
     medium: { label: 'MEDIUM', classes: 'bg-warning-50 text-warning-700 border border-warning-200' },
     low: { label: 'LOW', classes: 'bg-success-50 text-success-700 border border-success-200' },

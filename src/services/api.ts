@@ -19,6 +19,77 @@ interface ReviewListResponse {
   reviews: Assessment[];
 }
 
+const REVIEW_CACHE_STORAGE_KEY = 'migration-guardian.review-cache.v1';
+const REVIEW_LIST_CACHE_STORAGE_KEY = 'migration-guardian.review-list-cache.v1';
+const MAX_CACHED_REVIEWS = 50;
+const reviewCache = new Map<string, Assessment>();
+const reviewListCache: Assessment[] = [];
+let hasCachedReviewList = false;
+
+function hydrateReviewCache(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const stored = window.localStorage.getItem(REVIEW_CACHE_STORAGE_KEY);
+    if (!stored) return;
+
+    const reviews: unknown = JSON.parse(stored);
+    if (!Array.isArray(reviews)) return;
+
+    reviews.filter(isAssessment).slice(-MAX_CACHED_REVIEWS).forEach((review) => {
+      reviewCache.set(review.review_id, review);
+    });
+  } catch {
+    // A review cache must never prevent the application from starting.
+  }
+}
+
+function persistReviewCache(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const reviews = Array.from(reviewCache.values()).slice(-MAX_CACHED_REVIEWS);
+    window.localStorage.setItem(REVIEW_CACHE_STORAGE_KEY, JSON.stringify(reviews));
+  } catch {
+    // Storage can be unavailable or full; the in-memory cache still works.
+  }
+}
+
+function hydrateReviewListCache(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const stored = window.localStorage.getItem(REVIEW_LIST_CACHE_STORAGE_KEY);
+    if (!stored) return;
+
+    const reviews: unknown = JSON.parse(stored);
+    if (!Array.isArray(reviews)) return;
+
+    const cachedReviews = reviews.filter(isAssessment).slice(0, MAX_CACHED_REVIEWS);
+    reviewListCache.push(...cachedReviews);
+    cachedReviews.forEach((review) => reviewCache.set(review.review_id, review));
+    hasCachedReviewList = true;
+  } catch {
+    // A review-list cache must never prevent the application from starting.
+  }
+}
+
+function persistReviewListCache(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      REVIEW_LIST_CACHE_STORAGE_KEY,
+      JSON.stringify(reviewListCache.slice(0, MAX_CACHED_REVIEWS)),
+    );
+  } catch {
+    // Storage can be unavailable or full; the in-memory cache still works.
+  }
+}
+
+hydrateReviewCache();
+hydrateReviewListCache();
+
 export class ApiRequestError extends Error {
   constructor(message: string, public readonly status: number, public readonly code?: string) {
     super(message);
@@ -99,11 +170,61 @@ export async function submitReviewFile(
   });
 }
 
-export async function getReviews(): Promise<Assessment[]> {
-  return (await request<ReviewListResponse>('/api/v1/reviews')).reviews;
+export async function getReviews(
+  { bypassCache = false }: { bypassCache?: boolean } = {},
+): Promise<Assessment[]> {
+  const cached = getCachedReviews();
+  if (cached && !bypassCache) return cached;
+
+  const reviews = (await request<ReviewListResponse>('/api/v1/reviews')).reviews;
+  setCachedReviews(reviews);
+  return reviews;
 }
 
-export async function getReview(reviewId: string): Promise<Assessment> {
+export function getCachedReviews(): Assessment[] | undefined {
+  return hasCachedReviewList ? [...reviewListCache] : undefined;
+}
+
+function setCachedReviews(reviews: Assessment[]): void {
+  reviewListCache.splice(0, reviewListCache.length, ...reviews.slice(0, MAX_CACHED_REVIEWS));
+  hasCachedReviewList = true;
+  reviews.forEach((review) => reviewCache.set(review.review_id, review));
+  persistReviewCache();
+  persistReviewListCache();
+}
+
+export function getCachedReview(reviewId: string): Assessment | undefined {
+  return reviewCache.get(reviewId);
+}
+
+export function cacheReview(review: Assessment): void {
+  reviewCache.set(review.review_id, review);
+  const listIndex = reviewListCache.findIndex((cachedReview) => cachedReview.review_id === review.review_id);
+  if (listIndex >= 0) {
+    reviewListCache[listIndex] = review;
+    persistReviewListCache();
+  }
+  persistReviewCache();
+}
+
+export function addReviewToCachedList(review: Assessment): void {
+  cacheReview(review);
+  if (!hasCachedReviewList) return;
+
+  const existingIndex = reviewListCache.findIndex((cachedReview) => cachedReview.review_id === review.review_id);
+  if (existingIndex >= 0) reviewListCache.splice(existingIndex, 1);
+  reviewListCache.unshift(review);
+  reviewListCache.splice(MAX_CACHED_REVIEWS);
+  persistReviewListCache();
+}
+
+export async function getReview(
+  reviewId: string,
+  { bypassCache = false }: { bypassCache?: boolean } = {},
+): Promise<Assessment> {
+  const cached = getCachedReview(reviewId);
+  if (cached && !bypassCache) return cached;
+
   let response: Response;
   try {
     response = await fetch(`${apiBaseUrl()}/api/v1/reviews/${encodeURIComponent(reviewId)}`);
@@ -112,7 +233,10 @@ export async function getReview(reviewId: string): Promise<Assessment> {
   }
 
   const payload = await responsePayload(response);
-  if (isAssessment(payload) && (response.ok || payload.status === 'failed')) return payload;
+  if (isAssessment(payload) && (response.ok || payload.status === 'failed')) {
+    cacheReview(payload);
+    return payload;
+  }
   throw errorFromPayload(payload, response.status);
 }
 
@@ -125,7 +249,16 @@ export async function pollReview(
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
-    const review = await getReview(reviewId);
+    let review: Assessment;
+    try {
+      review = await getReview(reviewId, { bypassCache: true });
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        continue;
+      }
+      throw error;
+    }
     onUpdate(review);
     if (review.status === 'completed' || review.status === 'failed') return review;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -155,9 +288,11 @@ export async function signIn(username: string, password: string): Promise<User> 
 export async function signOut(): Promise<void> {}
 
 export async function joinWaitlist(email: string, firstName?: string): Promise<WaitlistResult> {
-  void firstName;
-  if (!email || !email.includes('@')) return { success: false, message: 'Please enter a valid work email.' };
-  return { success: true, message: "You're on the list. We'll keep you updated." };
+  return request<WaitlistResult>('/api/v1/waitlist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, first_name: firstName }),
+  });
 }
 
 export async function requestDemo(data: {
@@ -169,7 +304,17 @@ export async function requestDemo(data: {
   message?: string;
   tooling?: string;
 }): Promise<DemoRequestResult> {
-  if (!data.email || !data.email.includes('@')) return { success: false, message: 'Please enter a valid work email.' };
-  if (!data.fullName || !data.company) return { success: false, message: 'Name and company are required.' };
-  return { success: true, message: 'Thanks — your request has been received.' };
+  return request<DemoRequestResult>('/api/v1/contact-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      full_name: data.fullName,
+      email: data.email,
+      company: data.company,
+      role: data.role,
+      team_size: data.teamSize,
+      migration_tooling: data.tooling,
+      message: data.message,
+    }),
+  });
 }

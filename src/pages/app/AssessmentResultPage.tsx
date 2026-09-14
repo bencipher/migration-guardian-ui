@@ -13,11 +13,12 @@ import {
   Code2,
   ArrowLeft,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { SeverityBadge } from '@/components/ui/StatusBadges';
-import { getReview, pollReview } from '@/services/api';
+import { cacheReview, getCachedReview, getReview, pollReview } from '@/services/api';
 import type { Assessment, Decision } from '@/types';
 
 const decisionConfig: Record<Decision, { icon: typeof ShieldAlert; bg: string; border: string; text: string; label: string; subtext: string }> = {
@@ -55,6 +56,14 @@ const decisionConfig: Record<Decision, { icon: typeof ShieldAlert; bg: string; b
   },
 };
 
+const pendingWorkflowMessages = [
+  'Waiting for the review worker to begin.',
+  'Validating the migration artifact.',
+  'Inspecting the source database schema.',
+  'Evaluating migration safety.',
+  'Preparing the assessment.',
+];
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short',
@@ -68,19 +77,27 @@ function formatDate(iso: string): string {
 export default function AssessmentResultPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
-  const [assessment, setAssessment] = useState<Assessment | null>(null);
-  const [loading, setLoading] = useState(true);
+  const routeAssessment = (location.state as { assessment?: Assessment } | null)?.assessment;
+  const [assessment, setAssessment] = useState<Assessment | null>(
+    () => routeAssessment ?? (id ? getCachedReview(id) ?? null : null),
+  );
+  const [loading, setLoading] = useState(() => !routeAssessment && !(id && getCachedReview(id)));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [pendingMessageIndex, setPendingMessageIndex] = useState(0);
+  const [typedPendingMessage, setTypedPendingMessage] = useState('');
+  const isPending = assessment?.status === 'queued' || assessment?.status === 'processing';
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const initial = location.state?.assessment as Assessment | undefined ?? (id ? await getReview(id) : null);
+        const initial = routeAssessment ?? (id ? getCachedReview(id) ?? await getReview(id) : null);
         if (!initial) return;
         if (!active) return;
+        cacheReview(initial);
         setAssessment(initial);
+        setLoading(false);
         if (initial.status === 'queued' || initial.status === 'processing') {
           await pollReview(initial.review_id, (updated) => {
             if (active) setAssessment(updated);
@@ -94,16 +111,44 @@ export default function AssessmentResultPage() {
     };
     void load();
     return () => { active = false; };
-  }, [id, location.state]);
+  }, [id, routeAssessment]);
+
+  useEffect(() => {
+    if (!isPending) {
+      setPendingMessageIndex(0);
+      setTypedPendingMessage('');
+      return;
+    }
+
+    const message = pendingWorkflowMessages[pendingMessageIndex];
+    let characterIndex = 0;
+    setTypedPendingMessage('');
+
+    const typingTimer = window.setInterval(() => {
+      characterIndex += 1;
+      setTypedPendingMessage(message.slice(0, characterIndex));
+      if (characterIndex >= message.length) window.clearInterval(typingTimer);
+    }, 28);
+    const rotationTimer = window.setTimeout(() => {
+      setPendingMessageIndex((index) => (index + 1) % pendingWorkflowMessages.length);
+    }, Math.max(message.length * 28 + 1_600, 2_800));
+
+    return () => {
+      window.clearInterval(typingTimer);
+      window.clearTimeout(rotationTimer);
+    };
+  }, [isPending, pendingMessageIndex]);
 
   if (loading) {
     return (
       <div className="container-app py-10">
-        <div className="space-y-4">
-          <div className="h-24 rounded-xl shimmer-bg" />
-          <div className="h-48 rounded-xl shimmer-bg" />
-          <div className="h-48 rounded-xl shimmer-bg" />
-        </div>
+        <Card className="p-6 flex items-center gap-3">
+          <Loader2 className="w-5 h-5 text-brand-600 animate-spin" />
+          <div>
+            <p className="text-sm font-medium text-ink-900">Loading review details</p>
+            <p className="mt-1 text-xs text-ink-500">Retrieving this review for the first time.</p>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -131,6 +176,26 @@ export default function AssessmentResultPage() {
         <ArrowLeft className="w-3.5 h-3.5" /> Back to Reviews
       </Link>
 
+      {isPending && (
+        <Card className="p-6 border-brand-200 bg-brand-50">
+          <div className="flex items-start gap-3">
+            <Loader2 className="w-5 h-5 text-brand-600 animate-spin flex-shrink-0 mt-0.5" />
+            <div>
+              <h1 className="text-base font-semibold text-ink-900">Review accepted and {assessment.status}</h1>
+              <p className="mt-1 text-sm text-ink-700">Migration Guardian is evaluating this migration. This page updates automatically when the assessment is ready.</p>
+              <div className="mt-4 rounded-lg border border-brand-100 bg-white/70 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Estimated workflow</p>
+                <p className="mt-1 min-h-5 font-mono text-sm text-ink-700">{typedPendingMessage}<span className="animate-pulse text-brand-600">▋</span></p>
+                <p className="mt-2 text-xs text-ink-500">The live review status is checked every two seconds.</p>
+              </div>
+              {loadError && <p className="mt-3 text-xs text-danger-700">Status refresh failed: {loadError}</p>}
+              <p className="mt-3 text-xs text-ink-500 font-mono">Review ID: {assessment.review_id}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {!isPending && <>
       {/* Decision header */}
       <div className={`rounded-xl border-2 ${config.border} ${config.bg} p-6 mb-6`}>
         <div className="flex items-start gap-4">
@@ -404,6 +469,7 @@ export default function AssessmentResultPage() {
           <Button variant="outline" size="md">View All Reviews</Button>
         </Link>
       </div>
+      </>}
     </div>
   );
 }

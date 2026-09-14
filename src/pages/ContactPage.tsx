@@ -22,20 +22,26 @@ export default function ContactPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setStatus('loading');
-    const result = await requestDemo({
-      fullName: form.fullName,
-      email: form.email,
-      company: form.company,
-      role: form.role,
-      teamSize: form.teamSize || undefined,
-      message: form.message || undefined,
-      tooling: form.tooling || undefined,
-    });
-    if (result.success) {
-      setStatus('success');
-    } else {
+    setErrorMsg('');
+    try {
+      const result = await requestDemo({
+        fullName: form.fullName,
+        email: form.email,
+        company: form.company,
+        role: form.role,
+        teamSize: form.teamSize || undefined,
+        message: form.message || undefined,
+        tooling: form.tooling || undefined,
+      });
+      if (result.success) {
+        setStatus('success');
+      } else {
+        setStatus('error');
+        setErrorMsg(result.message);
+      }
+    } catch (error) {
       setStatus('error');
-      setErrorMsg(result.message);
+      setErrorMsg(error instanceof Error ? error.message : 'Unable to save your contact request.');
     }
   };
 
@@ -130,9 +136,13 @@ export default function ContactPage() {
 
         <div className="mt-10 pt-8 border-t border-ink-200">
           <p className="text-sm text-ink-500">
-            Questions? Contact the Migration Guardian team at{' '}
-            <a href="mailto:hello@migrationguardian.io" className="text-brand-600 hover:text-brand-700 font-medium">
-              hello@migrationguardian.io
+            Questions? Contact Migration Guardian developer on{' '}
+            <a href="mailto:femolak@gmail.com" className="text-brand-600 hover:text-brand-700 font-medium">
+              femolak@gmail.com
+            </a>
+            {' '}or{' '}
+            <a href="https://x.com/bencipherx" className="text-brand-600 hover:text-brand-700 font-medium" target="_blank" rel="noreferrer">
+              @bencipherx on X
             </a>
             .
           </p>

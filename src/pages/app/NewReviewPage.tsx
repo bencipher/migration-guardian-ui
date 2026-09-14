@@ -14,11 +14,26 @@ import {
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input, Field, Select } from '@/components/ui/Form';
-import { ApiRequestError, pollReview, submitReviewFile, testConnection } from '@/services/api';
+import { addReviewToCachedList, submitReviewFile, testConnection } from '@/services/api';
 import type { Assessment, ConnectionResult, FileUploadResult, MigrationTypeSelection } from '@/types';
 
 type ConnState = 'idle' | 'testing' | 'connected' | 'failed';
-type AnalysisState = 'idle' | 'running' | 'failed';
+type AnalysisState = 'idle' | 'submitting' | 'failed';
+
+function queuedAssessment(reviewId: string): Assessment {
+  return {
+    review_id: reviewId,
+    status: 'queued',
+    decision: null,
+    risk_level: null,
+    summary: 'Review accepted. Migration Guardian is preparing the assessment.',
+    issues: [],
+    verified_checks: [],
+    next_steps: [],
+    warnings: [],
+    error: null,
+  };
+}
 
 function messageFor(error: unknown): string {
   return error instanceof Error ? error.message : 'The request could not be completed.';
@@ -37,10 +52,9 @@ export default function NewReviewPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [analysisState, setAnalysisState] = useState<AnalysisState>('idle');
-  const [review, setReview] = useState<Assessment | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  const canRun = connState === 'connected' && uploadResult !== null && analysisState !== 'running';
+  const canRun = connState === 'connected' && uploadResult !== null && analysisState !== 'submitting';
 
   const handleTestConnection = async () => {
     setConnState('testing');
@@ -82,9 +96,8 @@ export default function NewReviewPage() {
   const handleRun = async () => {
     if (!uploadResult) return;
 
-    setAnalysisState('running');
+    setAnalysisState('submitting');
     setAnalysisError(null);
-    setReview(null);
     try {
       const submitted = await submitReviewFile(
         uploadResult.file,
@@ -92,19 +105,17 @@ export default function NewReviewPage() {
         connUrl,
         sourceSchema,
       );
-      const completed = await pollReview(submitted.review_id, setReview);
-      navigate(`/app/reviews/${completed.review_id}`, { state: { assessment: completed } });
+      const review = queuedAssessment(submitted.review_id);
+      addReviewToCachedList(review);
+      navigate(`/app/reviews/${submitted.review_id}`, {
+        state: { assessment: review },
+      });
     } catch (error) {
       const message = messageFor(error);
       setAnalysisError(message);
       setAnalysisState('failed');
-      if (error instanceof ApiRequestError && error.status === 408 && review) {
-        navigate(`/app/reviews/${review.review_id}`);
-      }
     }
   };
-
-  const stage = review?.status === 'processing' ? 'Processing review in Migration Guardian…' : 'Review is queued…';
 
   return (
     <div className="container-app py-10 max-w-3xl">
@@ -175,7 +186,7 @@ export default function NewReviewPage() {
         <div className="flex items-center gap-2 mb-3"><span className="flex items-center justify-center w-6 h-6 rounded-full bg-brand-600 text-white text-xs font-bold">3</span><h2 className="text-base font-semibold text-ink-900">Assessment</h2></div>
         <Card className="p-6">
           {analysisState === 'idle' && <><div className="flex items-center gap-2 mb-4"><Lock className="w-4 h-4 text-ink-400" /><p className="text-sm text-ink-500">{canRun ? 'Ready to run. Migration Guardian will inspect your source database and evaluate the uploaded migration in an isolated sandbox.' : 'Complete the steps above before running.'}</p></div><Button variant="primary" size="lg" onClick={handleRun} disabled={!canRun}><Zap className="w-4 h-4" /> Run Migration Guardian</Button></>}
-          {analysisState === 'running' && <div className="space-y-3"><div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-600" /><span className="text-sm font-medium text-ink-900">{stage}</span></div><div className="flex items-center gap-2 text-xs text-ink-500"><Clock3 className="w-4 h-4" /> Live status is polled from the API every two seconds.</div></div>}
+          {analysisState === 'submitting' && <div className="space-y-3"><div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-600" /><span className="text-sm font-medium text-ink-900">Starting review…</span></div><div className="flex items-center gap-2 text-xs text-ink-500"><Clock3 className="w-4 h-4" /> You will be taken to the review status page as soon as the API accepts the job.</div></div>}
           {analysisState === 'failed' && <div className="space-y-3"><div className="flex items-center gap-2"><XCircle className="w-4 h-4 text-danger-600" /><span className="text-sm font-medium text-danger-800">Review could not be started or tracked</span></div><p className="text-sm text-danger-700">{analysisError}</p><Button variant="outline" size="sm" onClick={() => setAnalysisState('idle')}>Try again</Button></div>}
         </Card>
       </section>

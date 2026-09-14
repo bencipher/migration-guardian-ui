@@ -3,8 +3,8 @@ export type MigrationTypeSelection = MigrationType | 'auto';
 export type ReviewStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 export type Decision = 'block' | 'approve_with_conditions' | 'approve' | 'review_required';
-export type RiskLevel = 'high' | 'medium' | 'low';
-export type Severity = 'high' | 'medium' | 'low';
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
+export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type Provenance = 'source_database' | 'sandbox' | 'static' | 'unverified';
 export type AnalysisScope = 'full' | 'static_only';
 
