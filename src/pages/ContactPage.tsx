@@ -134,9 +134,9 @@ export default function ContactPage() {
           </Button>
         </form>
 
-        <div className="mt-10 pt-8 border-t border-ink-200">
+        <div className="mt-10 pt-8 border-t border-ink-200 text-center">
           <p className="text-sm text-ink-500">
-            Questions? Contact Migration Guardian developer on{' '}
+            Questions? Contact Migration Guardian developer<br/>
             <a href="mailto:femolak@gmail.com" className="text-brand-600 hover:text-brand-700 font-medium">
               femolak@gmail.com
             </a>
@@ -144,7 +144,27 @@ export default function ContactPage() {
             <a href="https://x.com/bencipherx" className="text-brand-600 hover:text-brand-700 font-medium" target="_blank" rel="noreferrer">
               @bencipherx on X
             </a>
-            .
+            .{' | '}
+            <a
+              href="https://www.linkedin.com/in/oluwafemi-o-12054388/"
+              className="inline-flex align-text-bottom text-brand-600 hover:text-brand-700"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Oluwafemi on LinkedIn"
+              title="LinkedIn"
+            >
+              LinkedIn
+            </a>{' | '}
+            <a
+              href="https://github.com/bencipher"
+              className="inline-flex align-text-bottom text-brand-600 hover:text-brand-700"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Oluwafemi on GitHub"
+              title="GitHub"
+            >
+              GitHub
+            </a>
           </p>
         </div>
       </div>
