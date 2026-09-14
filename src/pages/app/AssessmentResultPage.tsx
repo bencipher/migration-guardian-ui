@@ -169,6 +169,9 @@ export default function AssessmentResultPage() {
   const DecisionIcon = config.icon;
   const isStatic = assessment.analysis_scope === 'static_only';
   const hasDiagnostics = !!assessment.diagnostics;
+  const verifiedChecks = assessment.verified_checks ?? [];
+  const unverifiedChecks = assessment.unverified_checks ?? [];
+  const hasCheckDetails = verifiedChecks.length > 0 || unverifiedChecks.length > 0;
 
   return (
     <div className="container-app py-8 max-w-4xl">
@@ -332,18 +335,19 @@ export default function AssessmentResultPage() {
       )}
 
       {/* Verified / Unverified */}
+      {hasCheckDetails && (
       <div className="grid md:grid-cols-2 gap-4 mb-6">
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle2 className="w-4 h-4 text-success-600" />
             <h2 className="text-sm font-semibold text-ink-900">Verified</h2>
-            <span className="text-xs text-ink-400">({assessment.verified_checks.length})</span>
+            <span className="text-xs text-ink-400">({verifiedChecks.length})</span>
           </div>
-          {assessment.verified_checks.length === 0 ? (
+          {verifiedChecks.length === 0 ? (
             <p className="text-sm text-ink-400">No verified checks recorded.</p>
           ) : (
             <ul className="space-y-2.5">
-              {assessment.verified_checks.map((check, i) => (
+              {verifiedChecks.map((check, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <div className="flex-shrink-0 w-4 h-4 rounded-full border-2 border-success-500 flex items-center justify-center mt-0.5">
                     <CheckCircle2 className="w-2.5 h-2.5 text-success-600" />
@@ -359,13 +363,13 @@ export default function AssessmentResultPage() {
           <div className="flex items-center gap-2 mb-3">
             <HelpCircle className="w-4 h-4 text-ink-400" />
             <h2 className="text-sm font-semibold text-ink-900">Unverified</h2>
-            <span className="text-xs text-ink-400">({assessment.unverified_checks?.length ?? 0})</span>
+            <span className="text-xs text-ink-400">({unverifiedChecks.length})</span>
           </div>
-          {!assessment.unverified_checks || assessment.unverified_checks.length === 0 ? (
+          {unverifiedChecks.length === 0 ? (
             <p className="text-sm text-ink-400">No unverified items.</p>
           ) : (
             <ul className="space-y-2.5">
-              {assessment.unverified_checks.map((check, i) => (
+              {unverifiedChecks.map((check, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <div className="flex-shrink-0 w-4 h-4 rounded-full border-2 border-ink-300 flex items-center justify-center mt-0.5">
                     <HelpCircle className="w-2.5 h-2.5 text-ink-400" />
@@ -377,6 +381,7 @@ export default function AssessmentResultPage() {
           )}
         </Card>
       </div>
+      )}
 
       {/* Next steps */}
       {assessment.next_steps.length > 0 && (
