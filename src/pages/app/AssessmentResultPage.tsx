@@ -18,7 +18,7 @@ import {
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { SeverityBadge } from '@/components/ui/StatusBadges';
-import { cacheReview, getCachedReview, getReview, pollReview } from '@/services/api';
+import { ApiRequestError, cacheReview, getCachedReview, getReview, pollReview } from '@/services/api';
 import type { Assessment, Decision } from '@/types';
 
 const decisionConfig: Record<Decision, { icon: typeof ShieldAlert; bg: string; border: string; text: string; label: string; subtext: string }> = {
@@ -74,6 +74,28 @@ function formatDate(iso: string): string {
   });
 }
 
+function isReviewPending(review: Assessment): boolean {
+  return review.status === 'queued' || review.status === 'processing';
+}
+
+function failedReview(review: Assessment, cause: unknown): Assessment {
+  const apiError = cause instanceof ApiRequestError ? cause : undefined;
+  const timedOut = apiError?.status === 408;
+
+  return {
+    ...review,
+    status: 'failed',
+    summary: 'The review did not complete. Start a new review to try again.',
+    next_steps: ['Start a new review to try again.'],
+    error: {
+      code: apiError?.code ?? (timedOut ? 'review_tracking_timeout' : 'review_tracking_failed'),
+      message: timedOut
+        ? 'The review did not finish within five minutes. Tracking has stopped.'
+        : 'The review could not be completed. Tracking has stopped.',
+    },
+  };
+}
+
 export default function AssessmentResultPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -90,21 +112,32 @@ export default function AssessmentResultPage() {
 
   useEffect(() => {
     let active = true;
+    let trackedReview: Assessment | null = null;
     const load = async () => {
       try {
         const initial = routeAssessment ?? (id ? getCachedReview(id) ?? await getReview(id) : null);
         if (!initial) return;
         if (!active) return;
+        trackedReview = initial;
         cacheReview(initial);
         setAssessment(initial);
         setLoading(false);
-        if (initial.status === 'queued' || initial.status === 'processing') {
+        if (isReviewPending(initial)) {
           await pollReview(initial.review_id, (updated) => {
+            trackedReview = updated;
             if (active) setAssessment(updated);
           });
         }
       } catch (error) {
-        if (active) setLoadError(error instanceof Error ? error.message : 'Unable to load this review.');
+        if (!active) return;
+        if (trackedReview && isReviewPending(trackedReview)) {
+          const failed = failedReview(trackedReview, error);
+          cacheReview(failed);
+          setAssessment(failed);
+          setLoadError(null);
+        } else {
+          setLoadError(error instanceof Error ? error.message : 'Unable to load this review.');
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -165,7 +198,17 @@ export default function AssessmentResultPage() {
     );
   }
 
-  const config = decisionConfig[assessment.decision ?? 'review_required'];
+  const isFailed = assessment.status === 'failed';
+  const config = isFailed
+    ? {
+      icon: ShieldAlert,
+      bg: 'bg-danger-50',
+      border: 'border-danger-200',
+      text: 'text-danger-700',
+      label: 'REVIEW FAILED',
+      subtext: 'Migration Guardian could not complete this review.',
+    }
+    : decisionConfig[assessment.decision ?? 'review_required'];
   const DecisionIcon = config.icon;
   const isStatic = assessment.analysis_scope === 'static_only';
   const hasDiagnostics = !!assessment.diagnostics;
@@ -279,13 +322,15 @@ export default function AssessmentResultPage() {
       )}
 
       {/* Error */}
-      {assessment.error && (
+      {(assessment.error || isFailed) && (
         <div className="mb-6 p-4 bg-danger-50 border border-danger-200 rounded-lg">
           <div className="flex items-center gap-2 mb-1">
             <AlertCircle className="w-4 h-4 text-danger-600" />
-            <span className="text-sm font-semibold text-danger-800">Analysis error</span>
+            <span className="text-sm font-semibold text-danger-800">{isFailed ? 'Review failed' : 'Analysis error'}</span>
           </div>
-          <p className="text-sm text-danger-700">{assessment.error.message}</p>
+          <p className="text-sm text-danger-700">{assessment.error?.message ?? 'The review could not be completed.'}</p>
+          {isFailed && <p className="mt-1 text-sm text-danger-700">Start a new review to try again.</p>}
+          {assessment.error?.code && <p className="mt-2 text-xs font-mono text-danger-700">Code: {assessment.error.code}</p>}
         </div>
       )}
 

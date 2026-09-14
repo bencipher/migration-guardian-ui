@@ -109,8 +109,8 @@ export default function WorkspacePage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <RiskBadge risk={review.risk_level} />
-                    <DecisionBadge decision={review.decision} />
+                    <RiskBadge risk={review.risk_level} status={review.status} />
+                    <DecisionBadge decision={review.decision} status={review.status} />
                   </div>
                 </Card>
               </Link>

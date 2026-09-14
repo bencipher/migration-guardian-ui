@@ -1,7 +1,7 @@
-import type { Decision, RiskLevel, Severity } from '@/types';
+import type { Decision, RiskLevel, ReviewStatus, Severity } from '@/types';
 import { ShieldAlert, ShieldCheck, ShieldQuestion, AlertTriangle } from 'lucide-react';
 
-export function DecisionBadge({ decision }: { decision: Decision | null }) {
+export function DecisionBadge({ decision, status }: { decision: Decision | null; status?: ReviewStatus }) {
   const config: Record<Decision, { label: string; icon: typeof ShieldAlert; classes: string }> = {
     block: {
       label: 'BLOCK',
@@ -25,6 +25,10 @@ export function DecisionBadge({ decision }: { decision: Decision | null }) {
     },
   };
 
+  if (status === 'failed') {
+    return <span className="inline-flex items-center px-3 py-1 text-xs font-bold uppercase tracking-wider rounded border bg-danger-50 text-danger-700 border-danger-300">FAILED</span>;
+  }
+
   if (!decision) {
     return <span className="inline-flex items-center px-3 py-1 text-xs font-bold uppercase tracking-wider rounded border bg-ink-100 text-ink-600 border-ink-300">PENDING</span>;
   }
@@ -39,13 +43,17 @@ export function DecisionBadge({ decision }: { decision: Decision | null }) {
   );
 }
 
-export function RiskBadge({ risk }: { risk: RiskLevel | null }) {
+export function RiskBadge({ risk, status }: { risk: RiskLevel | null; status?: ReviewStatus }) {
   const config: Record<RiskLevel, { label: string; classes: string }> = {
     critical: { label: 'CRITICAL', classes: 'bg-danger-200 text-danger-900' },
     high: { label: 'HIGH', classes: 'bg-danger-100 text-danger-800' },
     medium: { label: 'MEDIUM', classes: 'bg-warning-100 text-warning-800' },
     low: { label: 'LOW', classes: 'bg-success-100 text-success-800' },
   };
+
+  if (status === 'failed') {
+    return <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold uppercase tracking-wide rounded bg-danger-100 text-danger-800">FAILED</span>;
+  }
 
   if (!risk) {
     return <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold uppercase tracking-wide rounded bg-ink-100 text-ink-600">PENDING</span>;
