@@ -207,6 +207,16 @@ export function cacheReview(review: Assessment): void {
   persistReviewCache();
 }
 
+export function removeCachedReview(reviewId: string): void {
+  reviewCache.delete(reviewId);
+  const listIndex = reviewListCache.findIndex((review) => review.review_id === reviewId);
+  if (listIndex >= 0) {
+    reviewListCache.splice(listIndex, 1);
+    persistReviewListCache();
+  }
+  persistReviewCache();
+}
+
 export function addReviewToCachedList(review: Assessment): void {
   cacheReview(review);
   if (!hasCachedReviewList) return;
@@ -237,6 +247,7 @@ export async function getReview(
     cacheReview(payload);
     return payload;
   }
+  if (response.status === 404) removeCachedReview(reviewId);
   throw errorFromPayload(payload, response.status);
 }
 

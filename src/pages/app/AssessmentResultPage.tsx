@@ -18,7 +18,7 @@ import {
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { SeverityBadge } from '@/components/ui/StatusBadges';
-import { ApiRequestError, cacheReview, getCachedReview, getReview, pollReview } from '@/services/api';
+import { ApiRequestError, cacheReview, getReview, pollReview } from '@/services/api';
 import type { Assessment, Decision } from '@/types';
 
 const decisionConfig: Record<Decision, { icon: typeof ShieldAlert; bg: string; border: string; text: string; label: string; subtext: string }> = {
@@ -101,9 +101,9 @@ export default function AssessmentResultPage() {
   const location = useLocation();
   const routeAssessment = (location.state as { assessment?: Assessment } | null)?.assessment;
   const [assessment, setAssessment] = useState<Assessment | null>(
-    () => routeAssessment ?? (id ? getCachedReview(id) ?? null : null),
+    () => routeAssessment && isReviewPending(routeAssessment) ? routeAssessment : null,
   );
-  const [loading, setLoading] = useState(() => !routeAssessment && !(id && getCachedReview(id)));
+  const [loading, setLoading] = useState(() => !(routeAssessment && isReviewPending(routeAssessment)));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [jsonOpen, setJsonOpen] = useState(false);
   const [pendingMessageIndex, setPendingMessageIndex] = useState(0);
@@ -115,7 +115,9 @@ export default function AssessmentResultPage() {
     let trackedReview: Assessment | null = null;
     const load = async () => {
       try {
-        const initial = routeAssessment ?? (id ? getCachedReview(id) ?? await getReview(id) : null);
+        const initial = routeAssessment && isReviewPending(routeAssessment)
+          ? routeAssessment
+          : id ? await getReview(id, { bypassCache: true }) : null;
         if (!initial) return;
         if (!active) return;
         trackedReview = initial;

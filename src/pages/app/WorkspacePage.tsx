@@ -13,7 +13,7 @@ export default function WorkspacePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    getReviews()
+    getReviews({ bypassCache: true })
       .then((reviews) => setRecentReviews(reviews.slice(0, 5)))
       .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Unable to load reviews.'))
       .finally(() => setLoading(false));

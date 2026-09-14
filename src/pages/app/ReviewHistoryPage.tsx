@@ -22,7 +22,7 @@ export default function ReviewHistoryPage() {
   const [filter, setFilter] = useState<Decision | 'all'>('all');
 
   useEffect(() => {
-    getReviews()
+    getReviews({ bypassCache: true })
       .then(setReviews)
       .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Unable to load reviews.'))
       .finally(() => setLoading(false));
